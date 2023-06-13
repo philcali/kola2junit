@@ -7,7 +7,7 @@ OUTPUT=""
 INPUT=""
 
 function usage() {
-    echo "Usage $(basename $0) - v$VERSION: Converts kola results to junit xml"
+    echo "Usage $(basename "$0") - v$VERSION: Converts kola results to junit xml"
     echo "Example usage: [-h|--help] [-w|--workdir WORKDIR] [-o|--output OUTPUT] [-i|--input INPUT] [-n|--name NAME]"
     echo "  -h|--help             displays this help message"
     echo "  -n|--name    NAME     name of the test suite"
@@ -20,11 +20,12 @@ function parse_args() {
     local param
     while [ -n "$*" ]; do
         param=$1
-        case "$parm" in
-            -h|--help) usage; return 0;;
+        case "$param" in
+            -h|--help) usage; exit;;
             -o|--output) shift; OUTPUT=$1;;
             -w|--workdir) shift; WORKDIR=$1;;
             -i|--input) shift; INPUT=$1;;
+            -n|--name) shift; NAME=$1;;
             *) usage; return 1;;
         esac
         shift
@@ -49,9 +50,10 @@ function main() {
     local failures=0
     local testcases=()
     local testname
+    local tmp_output
     local old_ifs=$IFS
     IFS=$'\n'
-    for test_result in `jq -c '.tests[]' < "${INPUT:-/dev/stdin}"`; do
+    for test_result in $(jq -c '.tests[]' < "${INPUT:-/dev/stdin}"); do
         # Skip tests
         [ "$(echo "$test_result" | jq '.subtests')" != "null" ] && continue
         testname=$(echo "$test_result" | jq -r '.name')
@@ -62,13 +64,18 @@ function main() {
         tests=$(( tests + 1))
     done
 
-    cat << EOF > "${OUTPUT:-/dev/stdout}"
+    tmp_output=$(mktemp)
+    cat << EOF > "$tmp_output"
 <testsuites tests="$tests" failures="$failures">
     <testsuite name="$NAME" tests="$tests" failures="$failures">
         ${testcases[*]}
     </testsuite>
 </testsuites>
 EOF
+    IFS=$old_ifs
+
+    xmllint --schema /junit5/schema.xsd "$tmp_output" --noout >/dev/null || return 1
+    cat "$tmp_output" > "${OUTPUT:-/dev/stdout}"
 }
 
 parse_args "$@" || exit 1
