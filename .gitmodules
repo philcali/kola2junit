@@ -1,0 +1,3 @@
+[submodule "junit5"]
+	path = junit5
+	url = https://github.com/junit-team/junit5.git
