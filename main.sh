@@ -34,15 +34,25 @@ function parse_args() {
         >&2 echo "The working directory $WORKDIR does not exist"
         return 1
     }
-    [ -z "$INPUT" ] || {
+    if [ -n "$INPUT" ] && [ ! -e "$INPUT" ]; then
         >&2 echo "The input file $INPUT does not exist"
         return 1
-    }
-    [ -z "$OUTPUT" ] || {
-        >&2 echo "The output file $OUTPUT does not exist"
-        return 1
-    }
+    fi
     return 0
+}
+
+function output_properties() {
+    echo "<properties>"
+    if [ -f "$WORKDIR"/properties.json ]; then
+        local cmdline="NA"; cmdline=$(jq -r '.cmdline | join(" ")' < "$WORKDIR/properties.json")
+        echo "<property name=\"cmdline\" value=\"$cmdline\"/>"
+    fi
+    echo "</properties>"
+}
+
+function nano_to_seconds() {
+    local nanos=$1
+    echo "scale=2; $nanos / 1000 / 1000 / 1000" | bc
 }
 
 function main() {
@@ -52,22 +62,32 @@ function main() {
     local testname
     local tmp_output
     local old_ifs=$IFS
+    local total_time=0
     IFS=$'\n'
     for test_result in $(jq -c '.tests[]' < "${INPUT:-/dev/stdin}"); do
         # Skip tests
         [ "$(echo "$test_result" | jq '.subtests')" != "null" ] && continue
+        local elements=()
         testname=$(echo "$test_result" | jq -r '.name')
         resultstatus=$(echo "$test_result" | jq -r '.result')
+        output=$(echo "$test_result" | jq -r '.output')
         duration=$(echo "$test_result" | jq -r '.duration')
-        [ "$resultstatus" != "PASS" ] && failures=$(( failures + 1 ))
-        testcases+=("<testcase name=\"$testname\" time=\"$(echo "scale=2; $duration / 1000 / 1000 / 1000" | bc)\"/>")
+        total_time=$((total_time + duration))
+        if [ "$resultstatus" = "PASS" ]; then
+            [ -n "$output" ] && elements+=("<system-out>" "<![CDATA[" "$output" "]]>" "</system-out>")
+        else
+            failures=$(( failures + 1 ))
+            [ -n "$output" ] && elements+=("<system-err>" "<![CDATA[" "$output" "]]>" "</system-err>")
+        fi
+        testcases+=("<testcase name=\"$testname\" time=\"$(nano_to_seconds "$duration")\">${elements[*]}</testcase>")
         tests=$(( tests + 1))
     done
 
     tmp_output=$(mktemp)
     cat << EOF > "$tmp_output"
 <testsuites tests="$tests" failures="$failures">
-    <testsuite name="$NAME" tests="$tests" failures="$failures">
+    <testsuite name="$NAME" time="$(nano_to_seconds "$total_time")" tests="$tests" failures="$failures">
+        $(output_properties)
         ${testcases[*]}
     </testsuite>
 </testsuites>
