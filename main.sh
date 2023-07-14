@@ -5,15 +5,17 @@ WORKDIR="/working"
 NAME="kola run"
 OUTPUT=""
 INPUT=""
+DURATION=""
 
 function usage() {
     echo "Usage $(basename "$0") - v$VERSION: Converts kola results to junit xml"
     echo "Example usage: [-h|--help] [-w|--workdir WORKDIR] [-o|--output OUTPUT] [-i|--input INPUT] [-n|--name NAME]"
-    echo "  -h|--help             displays this help message"
-    echo "  -n|--name    NAME     name of the test suite"
-    echo "  -w|--workdir WORKDIR  kola work directory, defaults to /working"
-    echo "  -o|--output  OUTPUT   outputs the converted results to OUTPUT, defaults to stdout"
-    echo "  -i|--input   INPUT    the input file to convert, defaults to stdin"
+    echo "  -h|--help              displays this help message"
+    echo "  -n|--name     NAME     name of the test suite"
+    echo "  -w|--workdir  WORKDIR  kola work directory, defaults to /working"
+    echo "  -o|--output   OUTPUT   outputs the converted results to OUTPUT, defaults to stdout"
+    echo "  -i|--input    INPUT    the input file to convert, defaults to stdin"
+    echo "  -d|--duration DURATION the total time in seconds"
 }
 
 function parse_args() {
@@ -26,6 +28,7 @@ function parse_args() {
             -w|--workdir) shift; WORKDIR=$1;;
             -i|--input) shift; INPUT=$1;;
             -n|--name) shift; NAME=$1;;
+            -d|--duration) shift; DURATION=$1;;
             *) usage; return 1;;
         esac
         shift
@@ -84,9 +87,10 @@ function main() {
     done
 
     tmp_output=$(mktemp)
+    [ -z "$DURATION" ] && DURATION=$(nano_to_seconds "$total_time")
     cat << EOF > "$tmp_output"
 <testsuites tests="$tests" failures="$failures">
-    <testsuite name="$NAME" time="$(nano_to_seconds "$total_time")" tests="$tests" failures="$failures">
+    <testsuite name="$NAME" time="$DURATION" tests="$tests" failures="$failures">
         $(output_properties)
         ${testcases[*]}
     </testsuite>
